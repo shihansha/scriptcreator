@@ -44,7 +44,7 @@ export class ASTBuilder {
                 if (x.value === a) {
                     if (x.action) x.action(this.stack);
 
-                    if (a === "\\") {
+                    if (!shift && a === "\\") {
                         shift = true;
                     }
                     else {
@@ -54,20 +54,22 @@ export class ASTBuilder {
                 else if (x.value === "*+?") {
                     x.value = a;
                     if (x.action) x.action(this.stack);
+                    shift = false;
                 }
                 else if (!shift && x.value === "literals" && this.checkIsLiterals(a)) {
                     x.value = a;
                     if (x.action) x.action(this.stack);
+                    shift = false;
                 }
                 else if (shift && x.value === "specials" && this.checkIsSpecials(a)) {
                     if (a !== "w" && a !== "d") {
                         x.value = a;
-                        shift = false;
                     }
                     else {
                         x.value = "\\" + a;
                     }
                     if (x.action) x.action(this.stack);
+                    shift = false;
                 }
                 else {
                     this.error(`Unexpected token: '${a}', '${x.value}' expected.`);
