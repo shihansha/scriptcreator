@@ -132,6 +132,15 @@ function productA1(stack: Records.RecordType[]) {
     stack.push(rc, es, e, lc);
 }
 
+function productA2(stack: Records.RecordType[]) {
+    stack.pop();
+    let s = new Records.Nonterminal(9);
+    let sp = new Records.Synthesize(9, function (this: Records.Synthesize, stack: Records.RecordType[]) {
+        (stack[stack.length - 1 - 1] as Records.Synthesize).vals["val"] = new AST.Leaf(this.vals["limit"]);
+    });
+    stack.push(sp, s);
+}
+
 function productLit0(stack: Records.RecordType[]) {
     stack.pop();
     let lit0 = new Records.Terminal("literals", function (this: Records.Terminal, stack: Records.RecordType[]) {
@@ -149,6 +158,75 @@ function productLit1(stack: Records.RecordType[]) {
     stack.push(lit1, lit0);
 }
 
+function productS0(stack: Records.RecordType[]) {
+    stack.pop();
+    let lit0 = new Records.Terminal("[");
+    let b = new Records.Nonterminal(10);
+    let bs = new Records.Synthesize(10, function(this: Records.Synthesize, stack: Records.RecordType[]) {
+        (stack[stack.length - 1 - 2] as Records.Synthesize).vals["limit"] = this.vals["limit"];
+    });
+    let lit1 = new Records.Terminal("]");
+    stack.push(lit1, bs, b, lit0);
+}
+
+function productB0(stack: Records.RecordType[]) {
+    stack.pop();
+    let c = new Records.Nonterminal(12);
+    let cs = new Records.Synthesize(12, function(this: Records.Synthesize, stack: Records.RecordType[]) {
+        (stack[stack.length - 1 - 3] as Records.Synthesize).vals["limit"] = this.vals["limit"];
+    });
+    let bp = new Records.Nonterminal(11);
+    let bps = new Records.Synthesize(11, function(this: Records.Synthesize, stack: Records.RecordType[]) {
+        ((stack[stack.length - 1 - 1] as Records.Synthesize).vals["limit"] as AST.CharRange).merge(this.vals["limit"]);
+    });
+    stack.push(bps, bp, cs, c);
+}
+
+function productBp0(stack: Records.RecordType[]) {
+    stack.pop();
+    let c = new Records.Nonterminal(12);
+    let cs = new Records.Synthesize(12, function(this: Records.Synthesize, stack: Records.RecordType[]) {
+        (stack[stack.length - 1 - 3] as Records.Synthesize).vals["limit"] = this.vals["limit"];
+    });
+    let bp = new Records.Nonterminal(11);
+    let bps = new Records.Synthesize(11, function(this: Records.Synthesize, stack: Records.RecordType[]) {
+        ((stack[stack.length - 1 - 1] as Records.Synthesize).vals["limit"] as AST.CharRange).merge(this.vals["limit"]);
+    });
+    stack.push(bps, bp, cs, c);
+}
+
+function productBp1(stack: Records.RecordType[]) {
+    stack.pop();
+}
+
+function productC0(stack: Records.RecordType[]) {
+    stack.pop();
+    let lit = new Records.Nonterminal(8);
+    let lits = new Records.Synthesize(8, function(this: Records.Synthesize, stack: Records.RecordType[]) {
+        (stack[stack.length - 1 - 1] as Records.Nonterminal).inhs["inh"] = this.vals["val"];
+    });
+    let cp = new Records.Nonterminal(13);
+    let cps = new Records.Synthesize(13, function(this: Records.Synthesize, stack: Records.RecordType[]) {
+        (stack[stack.length - 1 - 1] as Records.Synthesize).vals["limit"] = this.vals["limit"];
+    });
+    stack.push(cps, cp, lits, lit);
+}
+
+function productCp0(stack: Records.RecordType[]) {
+    let org = stack.pop() as Records.Nonterminal;
+    let ter = new Records.Terminal("-");
+    let lit = new Records.Nonterminal(8);
+    let lits = new Records.Synthesize(8, function(this: Records.Synthesize, stack: Records.RecordType[]) {
+        (stack[stack.length - 1 - 1] as Records.Synthesize).vals["limit"] = new AST.CharRange(org.inhs["inh"], this.vals["val"]);
+    });
+    stack.push(lits, lit, ter);
+}
+
+function productCp1(stack: Records.RecordType[]) {
+    let org = stack.pop() as Records.Nonterminal;
+    (stack[stack.length - 1] as Records.Synthesize).vals["limit"] = new AST.CharRange(org.inhs["inh"]);
+}
+
 type ProductionCallbackType = (stack: Records.RecordType[]) => void;
 export const M: { [key: string]: ProductionCallbackType | undefined }[] = [
     {},
@@ -161,3 +239,20 @@ export const M: { [key: string]: ProductionCallbackType | undefined }[] = [
     { "(": productA1, "literals": productA0, "\\": productA0 },
     { "literals": productLit0, "\\": productLit1 },
 ];
+
+// TODO: add support for [a-zA-Z].
+// grammar: 
+// s ::= '[' b ']'
+// b ::= b c | c
+// c ::= literal '-' literal | literal
+// =====>
+// s ::= '[' b ']' {s.limits = b.limits}
+// b ::= c bp {b.limits = bp.limits.push(c.limit)}
+// bp ::= c bp {bp.limits = bp1.limits.push(c.limit)} | eps {bp.limits = []}
+// c ::= literal {cp.inh = literal.val} cp {c.limit = cp.limit} 
+// cp ::= '-' literal {cp.limit = new range(cp.inh, literal.val)} | eps {cp.limit = new range(literal.val, literal.val)}
+
+// a ::= literal | '(' e ')' | s {a.val = s.limits}
+
+// s.first = {'['} s.follow = a.follow
+

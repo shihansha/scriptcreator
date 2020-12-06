@@ -1,16 +1,17 @@
 import * as AST from "./AST"
 import { ASTBuilder } from "./ASTBuilder"
 
-function getInputCharset(n: AST.Node | AST.Leaf, charset: Map<string, number[]> = new Map()) {
+function getInputCharset(n: AST.Node | AST.Leaf, charset: Map<string | AST.CharRange, number[]> = new Map()) {
     if (n instanceof AST.Node) {
         n.children.forEach(a => getInputCharset(a, charset));
     }
     else {
-        if (n.value !== "empty" && n.value !== "eof") {
-            if (!charset.has(n.value)) {
-                charset.set(n.value, []);
+        let nValue = n.value;
+        if (nValue !== "empty" && nValue !== "eof") {
+            if (!charset.has(nValue)) {
+                charset.set(nValue, []);
             }
-            charset.get(n.value)!.push(n.index);
+            charset.get(nValue)!.push(n.index);
         }
     }
 
@@ -155,10 +156,10 @@ function calcFollowpos(n: AST.Leaf | AST.Node, indexArr: AST.Leaf[]) {
     n.children.forEach(a => calcFollowpos(a, indexArr));
 }
 
-function genDFA(ast: AST.Node, indexArr: AST.Leaf[], charset: Map<string, number[]>) {
+function genDFA(ast: AST.Node, indexArr: AST.Leaf[], charset: Map<string | AST.CharRange, number[]>) {
     const dstates = [{ arr: [...ast.firstpos], flag: false }];
     let from: number;
-    let dtrans: { from: number, onChar: string, to: number }[] = [];
+    let dtrans: { from: number, onChar: string | AST.CharRange, to: number }[] = [];
     while ((from = dstates.findIndex(a => !a.flag)) !== -1) {
         let s = dstates[from];
         s.flag = true;
@@ -181,7 +182,7 @@ function genDFA(ast: AST.Node, indexArr: AST.Leaf[], charset: Map<string, number
         }
     })
 
-    let newMap: Map<string, number>[] = dstates.map(() => new Map());
+    let newMap: Map<string | AST.CharRange, number>[] = dstates.map(() => new Map());
     dtrans.forEach(a => newMap[a.from].set(a.onChar, a.to));
     return { map: newMap, acc: accept };
 
@@ -222,35 +223,57 @@ export function parseAST(str: string) {
     return genDFA(extended, indexArr, charset);
 }
 
-export function testAST(dfa: ReturnType<typeof genDFA>, str: string) {
+export function searchAST(dfa: ReturnType<typeof genDFA>, str: string) {
     let cur = 0;
-    for (const c of str) {
+    let accept: number[] = [];
+    for (let idx = 0; idx < str.length; idx++) {
+        const c = str[idx];
         let entry = dfa.map[cur];
         if (entry.has(c)) {
             cur = entry.get(c)!;
+            if (dfa.acc.indexOf(cur) !== -1) {
+                accept.push(idx + 1);
+            }
             continue;
         }
         else if (entry.has("\\w")) {
             if (isCharacter(c) || isNumber(c) || c === "_") {
                 cur = entry.get("\\w")!;
+                if (dfa.acc.indexOf(cur) !== -1) {
+                    accept.push(idx + 1);
+                }    
                 continue;
             }
         }
         else if (entry.has("\\d")) {
             if (isNumber(c)) {
                 cur = entry.get("\\d")!;
+                if (dfa.acc.indexOf(cur) !== -1) {
+                    accept.push(idx + 1);
+                }    
+                continue;
+            }
+        }
+        else { // astrange
+            let ranges = [...entry.keys()].filter(a => a instanceof AST.CharRange) as AST.CharRange[];
+            let matched = ranges.find(a => a.inRange(c));
+            if (matched) {
+                cur = entry.get(matched)!;
+                if (dfa.acc.indexOf(cur) !== -1) {
+                    accept.push(idx + 1);
+                }    
                 continue;
             }
         }
         
-        return false;
+        break;
     }
 
-    if (dfa.acc.indexOf(cur) !== -1) {
-        return true;
+    if (accept.length === 0) {
+        return 0;
     }
     else {
-        return false;
+        return accept[accept.length - 1];
     }
 
     function isNumber(c: string) {
