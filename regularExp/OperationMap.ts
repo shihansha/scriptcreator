@@ -153,7 +153,17 @@ function productLit1(stack: Records.RecordType[]) {
     stack.pop();
     let lit0 = new Records.Terminal("\\");
     let lit1 = new Records.Terminal("specials", function (this: Records.Terminal, stack: Records.RecordType[]) {
-        (stack[stack.length - 1 - 1] as Records.Synthesize).vals["val"] = this.value;
+        let val: string | AST.CharRange = this.value;
+        if (this.value === "\\d") {
+            val = new AST.CharRange("a", "z")
+                .merge(new AST.CharRange("A", "Z"))
+                .merge(new AST.CharRange("0", "9"))
+                .merge(new AST.CharRange("_"));
+        }
+        else if (this.value === "\\w") {
+            val = new AST.CharRange("0", "9");
+        }
+        (stack[stack.length - 1 - 1] as Records.Synthesize).vals["val"] = val;
     });
     stack.push(lit1, lit0);
 }
@@ -230,14 +240,19 @@ function productCp1(stack: Records.RecordType[]) {
 type ProductionCallbackType = (stack: Records.RecordType[]) => void;
 export const M: { [key: string]: ProductionCallbackType | undefined }[] = [
     {},
-    { "(": productE0, "literals": productE0, "\\": productE0 },
+    { "(": productE0, "literals": productE0, "\\": productE0, '[': productE0 },
     { "|": productEp0, ")": productEp1, "eof": productEp1 },
-    { "(": productT0, "literals": productT0, "\\": productT0 },
-    { "|": productTp1, "(": productTp0, ")": productTp1, "literals": productTp0, "\\": productTp0, "eof": productTp1 },
-    { "(": productU0, "literals": productU0, "\\": productU0 },
-    { "|": productUp1, "*": productUp0, "+": productUp0, "?": productUp0, "(": productUp1, ")": productUp1, "literals": productUp1, "\\": productUp1, "eof": productUp1 },
-    { "(": productA1, "literals": productA0, "\\": productA0 },
+    { "(": productT0, "literals": productT0, "\\": productT0, '[': productT0 },
+    { "|": productTp1, "(": productTp0, ")": productTp1, "literals": productTp0, "\\": productTp0, "eof": productTp1, '[': productTp0 },
+    { "(": productU0, "literals": productU0, "\\": productU0, '[': productU0 },
+    { "|": productUp1, "*": productUp0, "+": productUp0, "?": productUp0, "(": productUp1, ")": productUp1, "literals": productUp1, "\\": productUp1, "eof": productUp1, '[': productUp1 },
+    { "(": productA1, "literals": productA0, "\\": productA0, '[': productA2 },
     { "literals": productLit0, "\\": productLit1 },
+    { '[': productS0 },
+    { 'literals': productB0, '\\': productB0 },
+    { 'literals': productBp0, '\\': productBp0, ']': productBp1 },
+    { 'literals': productC0, '\\': productC0 },
+    { '-': productCp0, 'literals': productCp1, '\\': productCp1, ']': productCp1 },
 ];
 
 // TODO: add support for [a-zA-Z].
@@ -254,5 +269,10 @@ export const M: { [key: string]: ProductionCallbackType | undefined }[] = [
 
 // a ::= literal | '(' e ')' | s {a.val = s.limits}
 
-// s.first = {'['} s.follow = a.follow
+// s.first = {'['} s.follow = a.follow = { '*', '+', '?' }
+// b.first = c.first = literal.first {非关,'\\'} b.follow={']'}
+// bp.first = {非关,'\\',eps} bp.follow={']'}
+// c.first = {非关,'\\'} c.follow={非关,'\\',']'}
+// cp.first = {'-',eps} cp.follow={非关,'\\',']'}
+// ++a.first = {非关,'\','(','['}
 

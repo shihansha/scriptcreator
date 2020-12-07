@@ -1,6 +1,47 @@
 import * as AST from "./AST"
 import { ASTBuilder } from "./ASTBuilder"
 
+
+
+function splitRanges(n: AST.Node) {
+    let leaves = searchLeaves(n);
+    let mapped = AST.splitRanges(leaves);
+    pushBackLeaves(n, mapped);
+
+    function searchLeaves(n: AST.Node, buffer: (string | AST.CharRange)[] = []) {
+        n.children.forEach(a => {
+            if (a instanceof AST.Node) {
+                searchLeaves(a, buffer);
+            }
+            else {
+                buffer.push(a.value);
+            }
+        });
+        return buffer;
+    }
+
+    function pushBackLeaves(n: AST.Node, toPush: typeof mapped, buffer = { index: 0 }) {
+        for (let i = 0; i < n.children.length; i++) {
+            let c = n.children[i];
+            if (c instanceof AST.Node) {
+                pushBackLeaves(c, toPush, buffer);
+            }
+            else {
+                let map = mapped[buffer.index];
+                buffer.index = buffer.index + 1;
+                let res: AST.Node | AST.Leaf | undefined = undefined;
+                for (const m of map) {
+                    if (res === undefined) res = new AST.Leaf(m);
+                    else {
+                        res = new AST.Node("OR", res, new AST.Leaf(m));
+                    }
+                }
+                n.children[i] = res!;
+            }
+        }
+    }
+}
+
 function getInputCharset(n: AST.Node | AST.Leaf, charset: Map<string | AST.CharRange, number[]> = new Map()) {
     if (n instanceof AST.Node) {
         n.children.forEach(a => getInputCharset(a, charset));
@@ -201,6 +242,9 @@ export function parseAST(str: string) {
         return;
     }
 
+    // split all ranges:
+    splitRanges(ast);
+
     const extended = new AST.Node("CAT", ast, new AST.Leaf("eof"));
 
     // step 1
@@ -236,24 +280,24 @@ export function searchAST(dfa: ReturnType<typeof genDFA>, str: string) {
             }
             continue;
         }
-        else if (entry.has("\\w")) {
-            if (isCharacter(c) || isNumber(c) || c === "_") {
-                cur = entry.get("\\w")!;
-                if (dfa.acc.indexOf(cur) !== -1) {
-                    accept.push(idx + 1);
-                }    
-                continue;
-            }
-        }
-        else if (entry.has("\\d")) {
-            if (isNumber(c)) {
-                cur = entry.get("\\d")!;
-                if (dfa.acc.indexOf(cur) !== -1) {
-                    accept.push(idx + 1);
-                }    
-                continue;
-            }
-        }
+        // else if (entry.has("\\w")) {
+        //     if (isCharacter(c) || isNumber(c) || c === "_") {
+        //         cur = entry.get("\\w")!;
+        //         if (dfa.acc.indexOf(cur) !== -1) {
+        //             accept.push(idx + 1);
+        //         }    
+        //         continue;
+        //     }
+        // }
+        // else if (entry.has("\\d")) {
+        //     if (isNumber(c)) {
+        //         cur = entry.get("\\d")!;
+        //         if (dfa.acc.indexOf(cur) !== -1) {
+        //             accept.push(idx + 1);
+        //         }    
+        //         continue;
+        //     }
+        // }
         else { // astrange
             let ranges = [...entry.keys()].filter(a => a instanceof AST.CharRange) as AST.CharRange[];
             let matched = ranges.find(a => a.inRange(c));
@@ -276,11 +320,11 @@ export function searchAST(dfa: ReturnType<typeof genDFA>, str: string) {
         return accept[accept.length - 1];
     }
 
-    function isNumber(c: string) {
-        return c >= "0" && c <= "9";
-    }
+    // function isNumber(c: string) {
+    //     return c >= "0" && c <= "9";
+    // }
 
-    function isCharacter(c: string) {
-        return (c >= "A" && c <= "Z") || (c >= "a" && c <= "z");
-    }
+    // function isCharacter(c: string) {
+    //     return (c >= "A" && c <= "Z") || (c >= "a" && c <= "z");
+    // }
 }

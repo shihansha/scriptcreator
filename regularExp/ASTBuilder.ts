@@ -114,10 +114,10 @@ export class ASTBuilder {
     }
 
     private checkIsLiterals(str: string) {
-        return ["|", "*", "+", "?", "(", ")", "\\", "eof"].indexOf(str) === -1;
+        return ["|", "*", "+", "?", "(", ")", "\\", "eof", '[', ']', '-'].indexOf(str) === -1;
     }
 
     private checkIsSpecials(str: string) {
-        return ["|", "*", "+", "?", "(", ")", "\\", "w", "d"].indexOf(str) !== -1;
+        return ["|", "*", "+", "?", "(", ")", "\\", "w", "d", '[', ']', '-'].indexOf(str) !== -1;
     }
 }

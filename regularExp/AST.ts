@@ -12,15 +12,17 @@ export class CharRange {
 
     ranges: [string, string][] = [];
 
-    constructor(from: string, to?: string) {
+    constructor(from?: string, to?: string) {
+        if (from === undefined) return;
         if (to === undefined) to = from;
         this.ranges.push([from, to]);
     }
 
     merge(cr: CharRange | undefined) {
-        if (cr === undefined) return;
-        this.ranges = [...this.ranges, ...cr.ranges];
-        this.ranges.sort((a, b) => {
+        if (cr === undefined) return this;
+        let result: [string, string][] = [];
+        result = [...this.ranges, ...cr.ranges];
+        result.sort((a, b) => {
             if (a < b) {
                 return -1;
             }
@@ -31,6 +33,23 @@ export class CharRange {
                 return 0;
             }
         });
+        // try to seam up
+        let curr: [string, string] = result[0];
+        let res: [string, string][] = [result[0]];
+        result.forEach(a => {
+            if (a[0] <= curr[1]) { // can seam
+                if (a[1] <= curr[1]) return; // omit
+                else {
+                    curr[1] = a[1];
+                }
+            }
+            else {
+                res.push(a);
+                curr = a;
+            }
+        });
+        this.ranges = res;
+        return this;
     }
 
     inRange(c: string) {
@@ -80,6 +99,138 @@ export class CharRange {
             else cr.merge(new CharRange(save));
         }
         return cr;
+    }
+}
+
+export function splitRanges(crs: (string | CharRange)[]) {
+    let indexes = crs.map(() => 0);
+
+    const ranges = crs.map(a => {
+        if (typeof a === "string") {
+            let cCode = a.charCodeAt(0);
+            return [cCode, cCode + 1];
+        }
+        else {
+            return a.ranges.reduce((r: number[], b) => {
+                r.push(b[0].charCodeAt(0), b[1].charCodeAt(0) + 1);
+                return r;
+            }, [])
+        }
+    });
+
+    const splitted = getSplittedRange();
+
+    let result: (string | CharRange)[][] = crs.map(() => []);
+    splitted.forEach(a => {
+        let handled: [string, string][] = [];
+        for (let i = 0; i < a.range.length; i += 2) {
+            handled.push([String.fromCharCode(a.range[i]), String.fromCharCode(a.range[i + 1] - 1)]);
+        }
+        a.whos.forEach(w => {
+            let cr = new CharRange();
+            cr.ranges = handled;
+            result[w].push(cr);
+        });
+    });
+
+    for (let i = 0; i < result.length; i++) {
+        let r: CharRange[] = result[i] as CharRange[];
+        if (r.length === 1 && r[0].ranges[0] === r[0].ranges[1]) {
+            result[i] = r[0].ranges[0];
+        }
+    }
+    return result;
+
+    function getSplittedRange() {
+        let c = 0;
+        let opened: number[] = [];
+        let curMin: number = Number.MIN_SAFE_INTEGER;
+        let results: { range: number[]; whos: number[]; }[] = [];
+        const all = ranges.reduce((t, a) => t + a.length, 0);
+        do {
+            const mins = getMins();
+            c += mins.minIndexes.length;
+            if (mins.isLeft) {
+                if (opened.length > 0 && mins.minVal > curMin) {
+                    let range: [number, number] = [curMin, mins.minVal];
+                    let whos = opened.slice(0);
+                    joinResults(results, range, whos);
+                }
+                opened.push(...mins.minIndexes);
+                curMin = mins.minVal;
+            }
+            else {
+                if (mins.minVal > curMin) {
+                    let range: [number, number] = [curMin, mins.minVal];
+                    let whos = opened.slice(0);
+                    joinResults(results, range, whos);
+                }
+                opened = opened.filter(a => mins.minIndexes.indexOf(a) === -1);
+                curMin = mins.minVal;
+            }
+        } while (c < all);
+
+        return results;
+    }
+
+    function joinResults(results: { range: number[]; whos: number[]; }[], range: [number, number], whos: number[]) {
+        let found = results.find(a => {
+            if (a.whos.length === whos.length) {
+                return a.whos.every(b => whos.indexOf(b) !== -1);
+            }
+            return false;
+        })
+        if (found) {
+            found.range.push(...range);
+        }
+        else {
+            results.push({ range: range, whos: whos });
+        }
+    }
+
+    function getMins() {
+        let curs = ranges.map((a, i) => a[indexes[i]] ?? Number.MAX_SAFE_INTEGER);
+
+        let isLeft: boolean = true;
+        let minVal: number = Number.MAX_SAFE_INTEGER;
+        let minIndexes: number[] = [];
+
+        for (let i = 0; i < curs.length; i++) {
+            if (curs[i] < minVal) {
+                minVal = curs[i];
+                minIndexes = [i];
+                isLeft = indexes[i] % 2 === 0;
+            }
+            else if (curs[i] === minVal) {
+                if (isLeft) {
+                    if (indexes[i] % 2 === 0) {
+                        minIndexes.push(i);
+                    }
+                    else {
+                        // ignore
+                    }
+                }
+                else {
+                    if (indexes[i] % 2 === 0) {
+                        minVal = curs[i];
+                        minIndexes = [i];
+                        isLeft = true;
+                    }
+                    else {
+                        minIndexes.push(i);
+                    }
+                }
+            }
+            else {
+                // ignore
+            }
+        }
+
+        minIndexes.forEach(a => {
+            indexes[a] = indexes[a] + 1;
+        });
+
+        return { minVal: minVal, minIndexes: minIndexes, isLeft: isLeft };
     }
 }
 

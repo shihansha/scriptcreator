@@ -1,7 +1,7 @@
 import { parseAST, searchAST } from "./regularExp/Parser";
 
 console.log("test 1");
-let ast0 = parseAST("(a|b)*abb");
+let ast0 = parseAST("[a-z#]*abb");
 // test
 if (ast0) {
     console.log(searchAST(ast0, "abb"));        // t
@@ -14,16 +14,16 @@ if (ast0) {
     console.log(searchAST(ast0, "aaaaaaaabb")); // t
 }
 
-console.log("test 2");
-let ast1 = parseAST("(a|b)*\\dbb");
-// test
-if (ast1) {
-    console.log(searchAST(ast1, "1bb"));        // t
-    console.log(searchAST(ast1, "2bb"));        // t
-    console.log(searchAST(ast1, "abb"));        // f
-    console.log(searchAST(ast1, "aaaaaaaabb")); // f
-    console.log(searchAST(ast1, "ab123456bb")); // f
-    console.log(searchAST(ast1, "12345667ab")); // f
-    console.log(searchAST(ast1, "abbbbbb0bb")); // t
-    console.log(searchAST(ast1, "aaaaaaaabb")); // f
-}
+// console.log("test 2");
+// let ast1 = parseAST("(a|b)*\\dbb");
+// // test
+// if (ast1) {
+//     console.log(searchAST(ast1, "1bb"));        // t
+//     console.log(searchAST(ast1, "2bb"));        // t
+//     console.log(searchAST(ast1, "abb"));        // f
+//     console.log(searchAST(ast1, "aaaaaaaabb")); // f
+//     console.log(searchAST(ast1, "ab123456bb")); // f
+//     console.log(searchAST(ast1, "12345667ab")); // f
+//     console.log(searchAST(ast1, "abbbbbb0bb")); // t
+//     console.log(searchAST(ast1, "aaaaaaaabb")); // f
+// }
