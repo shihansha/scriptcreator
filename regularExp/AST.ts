@@ -122,23 +122,23 @@ export function splitRanges(crs: (string | CharRange)[]) {
 
     let result: (string | CharRange)[][] = crs.map(() => []);
     splitted.forEach(a => {
-        let handled: [string, string][] = [];
-        for (let i = 0; i < a.range.length; i += 2) {
-            handled.push([String.fromCharCode(a.range[i]), String.fromCharCode(a.range[i + 1] - 1)]);
+        let cr: string | CharRange;
+        if (a.range.length === 2 && a.range[0] === a.range[1] - 1) {
+            cr = String.fromCharCode(a.range[0]);
+        }
+        else {
+            cr = new CharRange();
+            let handled: [string, string][] = [];
+            for (let i = 0; i < a.range.length; i += 2) {
+                handled.push([String.fromCharCode(a.range[i]), String.fromCharCode(a.range[i + 1] - 1)]);
+            }
+            cr.ranges = handled;
         }
         a.whos.forEach(w => {
-            let cr = new CharRange();
-            cr.ranges = handled;
             result[w].push(cr);
         });
     });
 
-    for (let i = 0; i < result.length; i++) {
-        let r: CharRange[] = result[i] as CharRange[];
-        if (r.length === 1 && r[0].ranges[0] === r[0].ranges[1]) {
-            result[i] = r[0].ranges[0];
-        }
-    }
     return result;
 
     function getSplittedRange() {

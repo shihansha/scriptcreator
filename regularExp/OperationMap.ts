@@ -227,6 +227,9 @@ function productCp0(stack: Records.RecordType[]) {
     let ter = new Records.Terminal("-");
     let lit = new Records.Nonterminal(8);
     let lits = new Records.Synthesize(8, function(this: Records.Synthesize, stack: Records.RecordType[]) {
+        if (org.inhs["inh"] instanceof AST.CharRange || this.vals["val"] instanceof AST.CharRange) {
+            throw new Error("syntax error found in '[]'");
+        }
         (stack[stack.length - 1 - 1] as Records.Synthesize).vals["limit"] = new AST.CharRange(org.inhs["inh"], this.vals["val"]);
     });
     stack.push(lits, lit, ter);
@@ -234,7 +237,12 @@ function productCp0(stack: Records.RecordType[]) {
 
 function productCp1(stack: Records.RecordType[]) {
     let org = stack.pop() as Records.Nonterminal;
-    (stack[stack.length - 1] as Records.Synthesize).vals["limit"] = new AST.CharRange(org.inhs["inh"]);
+    if (org.inhs["inh"] instanceof AST.CharRange) {
+        (stack[stack.length - 1] as Records.Synthesize).vals["limit"] = org.inhs["inh"];
+    }
+    else {
+        (stack[stack.length - 1] as Records.Synthesize).vals["limit"] = new AST.CharRange(org.inhs["inh"]);
+    }
 }
 
 type ProductionCallbackType = (stack: Records.RecordType[]) => void;
