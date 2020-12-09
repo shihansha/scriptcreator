@@ -13,7 +13,7 @@ function splitRanges(n: AST.Node) {
             if (a instanceof AST.Node) {
                 searchLeaves(a, buffer);
             }
-            else {
+            else if (a.value !== "eof" && a.value !== "empty") {
                 buffer.push(a.value);
             }
         });
@@ -26,7 +26,7 @@ function splitRanges(n: AST.Node) {
             if (c instanceof AST.Node) {
                 pushBackLeaves(c, toPush, buffer);
             }
-            else {
+            else if (c.value !== "eof" && c.value !== "empty") {
                 let map = mapped[buffer.index];
                 buffer.index = buffer.index + 1;
                 let res: AST.Node | AST.Leaf | undefined = undefined;
@@ -48,7 +48,7 @@ function getInputCharset(n: AST.Node | AST.Leaf, charset: Map<string | AST.CharR
     }
     else {
         let nValue = n.value;
-        if (nValue !== "empty" && nValue !== "eof") {
+        if (typeof nValue !== 'string' || (nValue !== "empty" && nValue !== "eof")) {
             if (!charset.has(nValue)) {
                 charset.set(nValue, []);
             }
@@ -59,18 +59,21 @@ function getInputCharset(n: AST.Node | AST.Leaf, charset: Map<string | AST.CharR
     return charset;
 }
 
-function markOrder(n: AST.Node | AST.Leaf, indexArr: AST.Leaf[] = []) {
+function markOrder(n: AST.Node | AST.Leaf, indexArr: AST.Leaf[] = [], accArr: number[] = []) {
     if (n instanceof AST.Leaf) {
         if (n.value !== "empty") {
             n.index = indexArr.length;
             indexArr.push(n);
+            if (n.value === "eof") {
+                accArr.push(indexArr.length - 1);
+            }
         }
     }
     else {
-        n.children.forEach(a => markOrder(a, indexArr));
+        n.children.forEach(a => markOrder(a, indexArr, accArr));
     }
 
-    return indexArr;
+    return [indexArr, accArr] as [AST.Leaf[], number[]];
 }
 
 function calcNullable(n: AST.Node | AST.Leaf) {
@@ -197,7 +200,7 @@ function calcFollowpos(n: AST.Leaf | AST.Node, indexArr: AST.Leaf[]) {
     n.children.forEach(a => calcFollowpos(a, indexArr));
 }
 
-function genDFA(ast: AST.Node, indexArr: AST.Leaf[], charset: Map<string | AST.CharRange, number[]>) {
+function genDFA(ast: AST.Node, indexArr: AST.Leaf[], charset: Map<string | AST.CharRange, number[]>, accArr: number[]) {
     const dstates = [{ arr: [...ast.firstpos], flag: false }];
     let from: number;
     let dtrans: { from: number, onChar: string | AST.CharRange, to: number }[] = [];
@@ -215,17 +218,26 @@ function genDFA(ast: AST.Node, indexArr: AST.Leaf[], charset: Map<string | AST.C
             dtrans.push({ from: from, onChar: k, to: id });
         });
     }
-
-    let accept: number[] = [];
+    let accept: Map<number, number[]> = new Map();
     dstates.forEach((a, i) => {
-        if (a.arr.indexOf(indexArr.length - 1) !== -1) {
-            accept.push(i);
-        }
-    })
+        a.arr.forEach(n => {
+            let id = accArr.indexOf(n);
+            if (id !== -1) {
+                if (!accept.has(i)) accept.set(i, []);
+                accept.get(i)!.push(id);
+            }
+        });
+    });
 
     let newMap: Map<string | AST.CharRange, number>[] = dstates.map(() => new Map());
     dtrans.forEach(a => newMap[a.from].set(a.onChar, a.to));
-    return { map: newMap, acc: accept };
+
+    let firstAcc: Map<number, number> = new Map();
+    accept.forEach((v, k) => {
+        firstAcc.set(k, v.sort()[0]);
+    })
+
+    return { map: newMap, acc: firstAcc };
 
     function indexOfDstate(arr: number[]) {
         return dstates.findIndex(a => {
@@ -235,6 +247,14 @@ function genDFA(ast: AST.Node, indexArr: AST.Leaf[], charset: Map<string | AST.C
     }
 }
 
+export function parseASTs(strArr: string[]) {
+    let ast = strArr.map(s => new ASTBuilder(s).run());
+    if (ast.some(a => a === null)) return;
+    let extended = ast.map(a => new AST.Node("CAT", a!, new AST.Leaf("eof")));
+    let merged = extended.reduce((r, a) => new AST.Node("OR", r, a));
+    return innerParseAST(merged);
+}
+
 export function parseAST(str: string) {
     const astBuilder = new ASTBuilder(str);
     const ast = astBuilder.run();
@@ -242,69 +262,54 @@ export function parseAST(str: string) {
         return;
     }
 
+    const extended = new AST.Node("CAT", ast, new AST.Leaf("eof"));
+    return innerParseAST(extended);
+}
+
+function innerParseAST(ast: AST.Node) {
     // split all ranges:
     splitRanges(ast);
 
-    const extended = new AST.Node("CAT", ast, new AST.Leaf("eof"));
-
     // step 1
-    const indexArr = markOrder(extended);
+    const [indexArr, accArr] = markOrder(ast);
 
     // step 2
-    calcNullable(extended);
+    calcNullable(ast);
 
     // step 3
-    calcFirstpos(extended);
-    calcLastpos(extended);
+    calcFirstpos(ast);
+    calcLastpos(ast);
 
     // step 4
-    calcFollowpos(extended, indexArr);
+    calcFollowpos(ast, indexArr);
 
     // step 5
-    const charset = getInputCharset(extended);
+    const charset = getInputCharset(ast);
 
     // step 6
-    return genDFA(extended, indexArr, charset);
+    return genDFA(ast, indexArr, charset, accArr);
 }
 
-export function searchAST(dfa: ReturnType<typeof genDFA>, str: string) {
+export function searchAST(dfa: ReturnType<typeof genDFA>, str: string, startpos: number = 0) {
     let cur = 0;
-    let accept: number[] = [];
-    for (let idx = 0; idx < str.length; idx++) {
+    let accept: { regExpIdx: number, consumedLetterNum: number }[] = [];
+    for (let idx = startpos; idx < str.length; idx++) {
         const c = str[idx];
         let entry = dfa.map[cur];
         if (entry.has(c)) {
             cur = entry.get(c)!;
-            if (dfa.acc.indexOf(cur) !== -1) {
-                accept.push(idx + 1);
+            if (dfa.acc.has(cur)) {
+                accept.push({ regExpIdx: dfa.acc.get(cur)!, consumedLetterNum: idx - startpos + 1 });
             }
             continue;
         }
-        // else if (entry.has("\\w")) {
-        //     if (isCharacter(c) || isNumber(c) || c === "_") {
-        //         cur = entry.get("\\w")!;
-        //         if (dfa.acc.indexOf(cur) !== -1) {
-        //             accept.push(idx + 1);
-        //         }    
-        //         continue;
-        //     }
-        // }
-        // else if (entry.has("\\d")) {
-        //     if (isNumber(c)) {
-        //         cur = entry.get("\\d")!;
-        //         if (dfa.acc.indexOf(cur) !== -1) {
-        //             accept.push(idx + 1);
-        //         }    
-        //         continue;
-        //     }
-        // }
         else { // astrange
             let ranges = [...entry.keys()].filter(a => a instanceof AST.CharRange) as AST.CharRange[];
             let matched = ranges.find(a => a.inRange(c));
             if (matched) {
                 cur = entry.get(matched)!;
-                if (dfa.acc.indexOf(cur) !== -1) {
-                    accept.push(idx + 1);
+                if (dfa.acc.has(cur)) {
+                    accept.push({ regExpIdx: dfa.acc.get(cur)!, consumedLetterNum: idx - startpos + 1 });
                 }    
                 continue;
             }
@@ -314,17 +319,9 @@ export function searchAST(dfa: ReturnType<typeof genDFA>, str: string) {
     }
 
     if (accept.length === 0) {
-        return 0;
+        return null;
     }
     else {
         return accept[accept.length - 1];
     }
-
-    // function isNumber(c: string) {
-    //     return c >= "0" && c <= "9";
-    // }
-
-    // function isCharacter(c: string) {
-    //     return (c >= "A" && c <= "Z") || (c >= "a" && c <= "z");
-    // }
 }

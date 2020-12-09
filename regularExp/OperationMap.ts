@@ -155,13 +155,21 @@ function productLit1(stack: Records.RecordType[]) {
     let lit1 = new Records.Terminal("specials", function (this: Records.Terminal, stack: Records.RecordType[]) {
         let val: string | AST.CharRange = this.value;
         if (this.value === "\\d") {
-            val = new AST.CharRange("a", "z")
-                .merge(new AST.CharRange("A", "Z"))
-                .merge(new AST.CharRange("0", "9"))
-                .merge(new AST.CharRange("_"));
+            val = new AST.CharRange("0", "9");
         }
         else if (this.value === "\\w") {
-            val = new AST.CharRange("0", "9");
+            val = new AST.CharRange("a", "z")
+            .merge(new AST.CharRange("A", "Z"))
+            .merge(new AST.CharRange("0", "9"))
+            .merge(new AST.CharRange("_"));
+
+        }
+        else if (this.value === "\\s") {
+            val = new AST.CharRange(" ")
+                .merge(new AST.CharRange("\t"));
+        }
+        else {
+
         }
         (stack[stack.length - 1 - 1] as Records.Synthesize).vals["val"] = val;
     });

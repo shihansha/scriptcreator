@@ -12,7 +12,7 @@ export class ASTBuilder {
     }
 
     error(msg: string) {
-        console.error(msg);
+        console.error(msg + "\n" + this.inputStr);
     }
 
     run(): AST.Node | null {
@@ -62,7 +62,7 @@ export class ASTBuilder {
                     shift = false;
                 }
                 else if (shift && x.value === "specials" && this.checkIsSpecials(a)) {
-                    if (a !== "w" && a !== "d") {
+                    if (a !== "w" && a !== "d" && a !== "s") {
                         x.value = a;
                     }
                     else {
@@ -72,7 +72,7 @@ export class ASTBuilder {
                     shift = false;
                 }
                 else {
-                    this.error(`Unexpected token: '${a}', '${x.value}' expected.`);
+                    this.error(`Unexpected token: '${a}' at ${ip + 1}, '${x.value}' expected.`);
                 }
 
                 this.stack.pop();
@@ -93,7 +93,7 @@ export class ASTBuilder {
                         lit(this.stack);
                     }
                     else {
-                        this.error(`Unexpected token: '${a}', '${Object.getOwnPropertyNames(OperationMap.M[x.index]).join()}' expected`);
+                        this.error(`Unexpected token: '${a}' at ${ip + 1}, '${Object.getOwnPropertyNames(OperationMap.M[x.index]).join()}' expected`);
                         break;
                     }
                 }
@@ -103,7 +103,7 @@ export class ASTBuilder {
                         lit(this.stack);
                     }
                     else {
-                        this.error(`Unexpected token: '${a}', '${Object.getOwnPropertyNames(OperationMap.M[x.index]).join()}' expected`);
+                        this.error(`Unexpected token: '${a}' at ${ip + 1}, '${Object.getOwnPropertyNames(OperationMap.M[x.index]).join()}' expected`);
                         break;
                     }
                 }
@@ -118,6 +118,6 @@ export class ASTBuilder {
     }
 
     private checkIsSpecials(str: string) {
-        return ["|", "*", "+", "?", "(", ")", "\\", "w", "d", '[', ']', '-'].indexOf(str) !== -1;
+        return ["|", "*", "+", "?", "(", ")", "\\", "w", "d", "s", '[', ']', '-'].indexOf(str) !== -1;
     }
 }
