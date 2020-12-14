@@ -30,12 +30,14 @@ export class Production {
     /**
      * 0-0x1000: terminal
      * 0x1000-0x2000: nonterminal
-     * \>0x2000: resolved
+     * \>0x2000: reserved
      */
     static readonly NON_TERMINAL_START = 0x1000;
     static readonly START_PRODUCTION = 0x2000;
     static readonly ERROR_PRODUCTION = 0x2001;
     static readonly SHARP_PRODUCTION = 0x2002;
+    static readonly DUMMY_PRODUCTION = 0x2003;
+    static readonly EOF = -1;
     readonly leftHand: number;
     readonly rightHand: number[];
     readonly reducer: ReduceCallback;
@@ -49,10 +51,17 @@ export class Production {
 export class ProductionState {
     readonly production: Production;
     curState: number;
-    readonly lookFoward: number[] = [];
+    lookFoward: number[] = [];
     constructor(production: Production, curState: number) {
         this.production = production;
         this.curState = curState;
+    }
+
+    get restInput(): (number | undefined)[] {
+        return this.production.rightHand.slice(this.curState);
+    }
+    get currentInput(): number | undefined {
+        return this.production.rightHand[this.curState];
     }
 }
 
