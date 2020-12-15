@@ -11,43 +11,87 @@ export class LRStateMachine {
 
     private canonicalLRCollections: DT.ProductionState[][] = [];
     private gotoTable: number[][] = [];
+    private actionTable: { at: number, action: Action, to: number, prodIdx: number }[][];
+    private nGotoTable: { at: number, to: number }[][];
 
-    constructor(private productions: DT.Production[], private terminalCount: number, private nonterminalCount: number) {
+    constructor(private productions: DT.Production[]) {
         productions.push(new DT.Production(DT.Production.START_PRODUCTION, [DT.Production.NON_TERMINAL_START], () => console.log("parse successful")));
-        nonterminalCount++;
+
+        this.actionTable = this.genLALR();
+
+        this.nGotoTable = this.canonicalLRCollections.map(() => []);
+        this.gotoTable.forEach((a, i) => {
+            a.forEach((p, j) => {
+                if (j >= DT.Production.NON_TERMINAL_START) {
+                    this.nGotoTable[i].push({ at: j, to: p });
+                }
+            });
+        });
+
+        this.printGotoTable();
+    }
+
+    private printGotoTable() {
+        console.log("\nGOTO TABLE:");
+        this.nGotoTable.forEach((a, i) => {
+            console.log("Group " + i);
+            a.forEach(p => {
+                console.log(`\t${DT.transToName(p.at)} -> Goto group: ${p.to}`);
+            });
+        });
+    }
+
+    private printLALR1Core() {
+        this.canonicalLRCollections.forEach((a, i) => {
+            console.log("Group " + i + "(" + a.length + ")");
+            a.forEach(b => {
+                console.log("\t" + b.toString());
+            });
+        });
     }
 
     private genLALR() {
         this.canonicalLRCollections = this.itemsLR0().map(a => this.getKernel(a));
+        // this.printDebug();
         let spreadTable: Map<[number, number], [number, number]> = new Map();
-        
+
         // gen look-forward seed
         this.canonicalLRCollections.forEach((iKernel, kernelIndex) => {
             iKernel.forEach((prod, prodIndex) => {
                 let state = new DT.ProductionState(prod.production, prod.curState);
-                state.lookFoward.push(DT.Production.SHARP_PRODUCTION);
-                let j = this.getKernel(this.gotoLR1(this.closureLR1([state]), DT.Production.SHARP_PRODUCTION));
-                j.forEach(s => {
-                    if (s.currentInput === undefined) return; // no more input means no goto
+                state.lookFoward.push(DT.Production.SHARP);
 
-                    if (s.lookFoward.indexOf(DT.Production.SHARP_PRODUCTION) !== -1) {
-                        // canonicalLRCollections[gotoTable [kernelIndex] [s.currentInput]] [getIndex(s.production)] products: s.lookFoward.excludes("#")
-                        let id = this.gotoTable[kernelIndex][s.currentInput];
-                        let found = this.canonicalLRCollections[id].find(a => a.production === s.production)!;
-                        let filtered = s.lookFoward.filter(a => a !== DT.Production.SHARP_PRODUCTION);
-                        found.lookFoward = filtered;
-                    }
-                    else {
-                        // includes sharp
-                        let id = this.gotoTable[kernelIndex][s.currentInput];
-                        let foundIndex = this.canonicalLRCollections[id].findIndex(a => a.production === s.production);
-                        spreadTable.set([kernelIndex, prodIndex], [id, foundIndex]);
-                    }
-                });
+                let c = this.closureLR1([state]);
+                let gs = [...new Set(c.filter(a => a.currentInput !== undefined).map(a => a.currentInput))] as number[];
+                gs.forEach(x => {
+                    let g = this.gotoLR1(c, x);
+                    let j = this.getKernel(g);
+
+                    j.forEach(s => {
+                        // if (s.currentInput === undefined) return; // no more input means no goto
+    
+                        if (s.lookFoward.find(a => a !== DT.Production.SHARP) !== undefined) {
+                            // canonicalLRCollections[gotoTable [kernelIndex] [x]] [getIndex(s.production)] products: s.lookFoward.excludes("#")
+                            let id = this.gotoTable[kernelIndex][x];
+                            let found = this.canonicalLRCollections[id].find(a => a.production === s.production)!;
+                            let filtered = s.lookFoward.filter(a => a !== DT.Production.SHARP);
+                            found.lookFoward = filtered;
+                        }
+                        if (s.lookFoward.indexOf(DT.Production.SHARP) !== -1) {
+                            // includes sharp
+                            let id = this.gotoTable[kernelIndex][x];
+                            let foundIndex = this.canonicalLRCollections[id].findIndex(a => a.production === s.production);
+                            spreadTable.set([kernelIndex, prodIndex], [id, foundIndex]);
+                        }
+                    });
+    
+                })
             });
         });
 
         this.canonicalLRCollections[0][0].lookFoward.push(DT.Production.EOF);
+
+        // this.printDebug();
 
         // calc look-forward
         let changedFlag = true;
@@ -63,14 +107,115 @@ export class LRStateMachine {
             });
         }
 
+        console.log("LALR(1) CORE: ")
+        this.printLALR1Core();
+
         // gen lang table
-        let actionTable: { at: number, action: Action, to: number }[][] = this.canonicalLRCollections.map(() => []);
-        
+        let actionTable: { at: number, action: Action, to: number, prodIdx: number }[][] = this.canonicalLRCollections.map(() => []);
+
         this.canonicalLRCollections.forEach((i, iIndex) => {
-            i.forEach(p => {
-                let gotoTar = p.currentInput ? this.gotoTable[iIndex]?.[p.currentInput] : undefined;
-                if (gotoTar !== undefined && gotoTar < DT.Production.NON_TERMINAL_START) {
-                    
+            i.forEach((p, pIndex) => {
+                let gotoTar = p.currentInput !== undefined ? this.gotoTable[iIndex][p.currentInput] : undefined;
+                if (gotoTar !== undefined && p.currentInput! < DT.Production.NON_TERMINAL_START) {
+                    let exist = actionTable[iIndex].find(a => a.at === p.currentInput);
+                    if (exist === undefined) {
+                        actionTable[iIndex].push({ at: p.currentInput!, action: Action.Shift, to: gotoTar, prodIdx: pIndex });
+                    }
+                    else if (exist.action === Action.Reduce) {
+                        let existInfo = this.canonicalLRCollections[iIndex][exist.prodIdx].production.addtionalInfo;
+                        let nowInfo = p.production.addtionalInfo;
+                        if (existInfo === undefined || nowInfo === undefined) {
+                            console.warn("Conflict found between: " + this.canonicalLRCollections[iIndex][exist.prodIdx].production.toString() + " (REDUCE) and " + p.production.toString() + " (SHIFT).");
+                            // default: reduce
+                        }
+                        else {
+                            if (existInfo.precedence >= nowInfo.precedence) {
+                                // reduce
+                            }
+                            else if (existInfo.isLeftAssociative) {
+                                // reduce
+                            }
+                            else {
+                                // shift
+                                actionTable[iIndex].splice(actionTable[iIndex].indexOf(exist), 1, { at: p.currentInput!, action: Action.Shift, to: gotoTar, prodIdx: pIndex });
+                            }
+                        }
+                    }
+                }
+                else if (p.currentInput === undefined && !(p.production.leftHand === DT.Production.START_PRODUCTION && p.curState === 1)) {
+                    p.lookFoward.forEach(l => {
+                        let exist = actionTable[iIndex].find(a => a.at === l);
+                        if (exist === undefined) {
+                            actionTable[iIndex].push({ at: l, action: Action.Reduce, to: 0, prodIdx: pIndex });
+                        }
+                        else {
+                            if (exist.action === Action.Reduce) {
+                                // reduce / reduce conflict
+                                let existProdIdx = this.productions.indexOf(this.canonicalLRCollections[iIndex][exist.prodIdx].production);
+                                let nowProdIdx = this.productions.indexOf(p.production);
+                                console.warn("Conflict found between: " + this.canonicalLRCollections[iIndex][exist.prodIdx].production.toString() + " (REDUCE " + existProdIdx + ") and " + p.production.toString() + " (REDUCE " + nowProdIdx + ").");
+
+                                if (existProdIdx <= nowProdIdx) {
+                                    // accept older
+                                }
+                                else {
+                                    // gen new
+                                    actionTable[iIndex].splice(actionTable[iIndex].indexOf(exist), 1, { at: l, action: Action.Reduce, to: 0, prodIdx: pIndex });
+                                }
+                            }
+                            else if (exist.action === Action.Shift) {
+                                // shift / reduce conflict
+                                let existInfo = this.canonicalLRCollections[iIndex][exist.prodIdx].production.addtionalInfo;
+                                let nowInfo = p.production.addtionalInfo;
+                                if (existInfo === undefined || nowInfo === undefined) {
+                                    console.warn("Conflict found between: " + p.production.toString() + " (REDUCE) and " + this.canonicalLRCollections[iIndex][exist.prodIdx].production.toString() + " (SHIFT).");
+                                    // default: reduce
+                                    actionTable[iIndex].splice(actionTable[iIndex].indexOf(exist), 1, { at: l, action: Action.Reduce, to: 0, prodIdx: pIndex });
+                                }
+                                else {
+                                    if (nowInfo.precedence >= existInfo.precedence) {
+                                        // reduce
+                                        actionTable[iIndex].splice(actionTable[iIndex].indexOf(exist), 1, { at: l, action: Action.Reduce, to: 0, prodIdx: pIndex });
+                                    }
+                                    else if (nowInfo.isLeftAssociative) {
+                                        // reduce
+                                        actionTable[iIndex].splice(actionTable[iIndex].indexOf(exist), 1, { at: l, action: Action.Reduce, to: 0, prodIdx: pIndex });
+                                    }
+                                    else {
+                                        // shift
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+                else if (p.production.leftHand === DT.Production.START_PRODUCTION && p.curState === 1) {
+                    actionTable[iIndex].push({ at: DT.Production.EOF, action: Action.Accept, to: 0, prodIdx: pIndex });
+                }
+            });
+        });
+
+        this.printActionTable(actionTable);
+        return actionTable;
+    }
+
+    private printActionTable(actionTable: { at: number; action: Action; to: number; prodIdx: number; }[][]) {
+        console.log("\nACTION TABLE: ");
+        actionTable.forEach((a, i) => {
+            console.log("Group " + i);
+            // this.canonicalLRCollections[i].forEach(a => console.log("\t" + a.toString()));
+            // console.log("\t----------");
+            a.forEach(b => {
+                if (b.action === Action.Accept) {
+                    console.log(`\t${DT.transToName(b.at)} -> Accept`);
+                }
+                else if (b.action === Action.Error) {
+                }
+                else if (b.action === Action.Reduce) {
+                    console.log(`\t${DT.transToName(b.at)} -> Reduce by: ${this.canonicalLRCollections[i][b.prodIdx].toString()}`);
+                }
+                else if (b.action === Action.Shift) {
+                    console.log(`\t${DT.transToName(b.at)} -> Shift to group: ${b.to}`);
                 }
             });
         });
@@ -81,7 +226,8 @@ export class LRStateMachine {
         i.forEach(a => {
             if (a.currentInput === x) {
                 let ps = new DT.ProductionState(a.production, a.curState + 1);
-                ps.lookFoward.concat(a.lookFoward);
+                ps.lookFoward = a.lookFoward.slice();
+                j.push(ps);
             }
         });
         return this.closureLR1(j);
@@ -91,34 +237,34 @@ export class LRStateMachine {
         let firstMap = calFirst();
         let ret = i.slice();
         while (true) {
-            let toAdd: typeof i = [];
-            i.forEach(a => {
+            let toAdd: typeof ret = [];
+            ret.forEach(a => {
                 let next = a.currentInput;
                 if (next === undefined) return;
                 let pros = this.productions.filter(a => a.leftHand === next);
                 pros.forEach(b => {
                     let l = a.production.rightHand.slice(a.curState + 1);
-                    l.push(DT.Production.DUMMY_PRODUCTION);
+                    l.push(DT.Production.DUMMY);
                     let firsts = firstList(l);
                     let idx: number;
-                    if ((idx = firsts.indexOf(DT.Production.DUMMY_PRODUCTION)) !== -1) {
+                    if ((idx = firsts.indexOf(DT.Production.DUMMY)) !== -1) {
                         firsts.splice(idx, 1, ...a.lookFoward);
                     }
 
                     firsts.forEach(f => {
                         let org = [...ret, ...toAdd];
-                        let found: DT.ProductionState | undefined;
-                        if (!(found = org.find(a => a.curState !== 0 && a.production !== b))) {
+                        let found = org.find(a => a.curState === 0 && a.production === b);
+                        if (found === undefined) {
                             found = new DT.ProductionState(b, 0);
                             toAdd.push(found);
                         }
-                        if (found.lookFoward.indexOf(f) !== -1) found.lookFoward.push(f);
+                        if (found.lookFoward.indexOf(f) === -1) found.lookFoward.push(f);
                     });
                 });
-                
+
             });
             if (toAdd.length === 0) break;
-            ret.concat(toAdd);
+            ret = ret.concat(toAdd);
         }
         return ret;
 
@@ -146,7 +292,8 @@ export class LRStateMachine {
                         return first(a);
                     }
                 });
-                firstArr.concat(...toAdd);
+                firstArr = [...new Set(firstArr.concat(...toAdd))];
+                firstMap.set(x, firstArr);
                 return firstArr;
             }
 
@@ -156,12 +303,13 @@ export class LRStateMachine {
         function firstList(l: number[]): number[] {
             let result: number[] = [];
             l.some(x => { // if not breaked: FIRST(last expr) includes 'eps'
-                let firstObj = firstMap.get(x)!;
+                let firstObj = firstMap.get(x) ?? [x];
                 if (firstObj.indexOf(undefined) !== -1) { // has 'eps'
                     firstObj.splice(firstObj.indexOf(undefined), 1);
-                    result.concat(firstObj as number[]);
+                    result = result.concat(firstObj as number[]);
                     return false; // includes FIRST(next letter)
                 }
+                result = result.concat(firstObj as number[]);
                 return true; // end search
             });
             return [...new Set(result)];
@@ -218,12 +366,14 @@ export class LRStateMachine {
                     let goix = this.gotoLR0(i, x);
                     let toIndex: number;
                     if (goix.length > 0) {
-                        if ((toIndex = [...c, ...newItems].findIndex(ci => !this.isSame(goix, ci))) === -1) {
+                        if ((toIndex = [...c, ...newItems].findIndex(ci => this.isSame(goix, ci))) === -1) {
                             newItems.push(goix);
                             toIndex = ++idx;
                         }
                         // goto[iIndex, x] = found
-                        gt.push([fromIndex, x, toIndex]);
+                        if (gt.find(a => a[0] === fromIndex && a[1] === x) === undefined) {
+                            gt.push([fromIndex, x, toIndex]);
+                        }
                     }
                 });
             });
@@ -245,7 +395,7 @@ export class LRStateMachine {
     }
 
     private getKernel(i: DT.ProductionState[]) {
-        return i.filter(a => a.curState !== 0 || a.production.leftHand !== DT.Production.START_PRODUCTION);
+        return i.filter(a => a.curState !== 0 || a.production.leftHand === DT.Production.START_PRODUCTION);
     }
     private isSame(a: DT.ProductionState[], b: typeof a) {
         let ai = this.getKernel(a);
