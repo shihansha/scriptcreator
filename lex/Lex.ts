@@ -2,8 +2,8 @@ import * as RegExp from "../regularExp/Parser";
 
 type Undefinable<T> = T extends undefined ? T : (T | undefined);
 
-type YYEnvInternal = { yylval: any, yytext: number, yyleng: number };
-export type YYEnv = { yylval: any, readonly yytext: number, readonly yyleng: number };
+type YYEnvInternal = { yylval: any, yytext: number, yyleng: number, program: string };
+export type YYEnv = { yylval: any, readonly yytext: number, readonly yyleng: number, readonly program: string, getCurrentVal: (this: YYEnv) => string };
 export type LexMatchCallback = ((yy: YYEnv) => number);
 export type LexEntry = [string, Undefinable<LexMatchCallback>];
 
@@ -11,7 +11,11 @@ export class Lex {
     public readonly yy: YYEnv = {
         yylval: null,
         yytext: 0,
-        yyleng: 0
+        yyleng: 0,
+        program: "",
+        getCurrentVal: function (this: YYEnv) {
+            return this.program.substring(this.yytext, this.yyleng + this.yytext);
+        }
     };
 
     private readonly callbacks: Undefinable<LexMatchCallback>[];
@@ -37,6 +41,7 @@ export class Lex {
         this.strLength = str.length;
         this.line = 1;
         this.character = 1;
+        (this.yy as YYEnvInternal).program = str;
     }
 
     public getNextToken() {
@@ -74,5 +79,9 @@ export class Lex {
         }
 
         return -1;
+    }
+
+    public getLineInfo(): [number, number] {
+        return [this.line, this.character];
     }
 }

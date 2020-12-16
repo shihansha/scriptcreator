@@ -1,6 +1,8 @@
 import * as DT from "./DataStructure";
 
-enum Action {
+const DEBUG = 0;
+
+export enum Action {
     Error = 0,
     Reduce,
     Shift,
@@ -9,13 +11,13 @@ enum Action {
 
 export class LRStateMachine {
 
-    private canonicalLRCollections: DT.ProductionState[][] = [];
+    public canonicalLRCollections: DT.ProductionState[][] = [];
     private gotoTable: number[][] = [];
-    private actionTable: { at: number, action: Action, to: number, prodIdx: number }[][];
-    private nGotoTable: { at: number, to: number }[][];
+    public actionTable: { at: number, action: Action, to: number, prodIdx: number }[][];
+    public nGotoTable: { at: number, to: number }[][];
 
     constructor(private productions: DT.Production[]) {
-        productions.push(new DT.Production(DT.Production.START_PRODUCTION, [DT.Production.NON_TERMINAL_START], () => console.log("parse successful")));
+        productions.push(new DT.Production(DT.Production.START_PRODUCTION, [DT.Production.NON_TERMINAL_START], s => s[s.length - 1].val));
 
         this.actionTable = this.genLALR();
 
@@ -32,22 +34,49 @@ export class LRStateMachine {
     }
 
     private printGotoTable() {
-        console.log("\nGOTO TABLE:");
-        this.nGotoTable.forEach((a, i) => {
-            console.log("Group " + i);
-            a.forEach(p => {
-                console.log(`\t${DT.transToName(p.at)} -> Goto group: ${p.to}`);
+        if (DEBUG) {
+            console.log("\nGOTO TABLE:");
+            this.nGotoTable.forEach((a, i) => {
+                console.log("Group " + i);
+                a.forEach(p => {
+                    console.log(`\t${DT.transToName(p.at)} -> Goto group: ${p.to}`);
+                });
             });
-        });
+        }
     }
 
     private printLALR1Core() {
-        this.canonicalLRCollections.forEach((a, i) => {
-            console.log("Group " + i + "(" + a.length + ")");
-            a.forEach(b => {
-                console.log("\t" + b.toString());
+        if (DEBUG) {
+            console.log("LALR(1) CORE: ")
+            this.canonicalLRCollections.forEach((a, i) => {
+                console.log("Group " + i + "(" + a.length + ")");
+                a.forEach(b => {
+                    console.log("\t" + b.toString());
+                });
             });
-        });
+        }
+    }
+
+    private printActionTable(actionTable: { at: number; action: Action; to: number; prodIdx: number; }[][]) {
+        if (DEBUG) {
+            console.log("\nACTION TABLE: ");
+            actionTable.forEach((a, i) => {
+                console.log("Group " + i);
+                a.forEach(b => {
+                    if (b.action === Action.Accept) {
+                        console.log(`\t${DT.transToName(b.at)} -> Accept`);
+                    }
+                    else if (b.action === Action.Error) {
+                    }
+                    else if (b.action === Action.Reduce) {
+                        console.log(`\t${DT.transToName(b.at)} -> Reduce by: ${this.canonicalLRCollections[i][b.prodIdx].toString()}`);
+                    }
+                    else if (b.action === Action.Shift) {
+                        console.log(`\t${DT.transToName(b.at)} -> Shift to group: ${b.to}`);
+                    }
+                });
+            });
+        }
     }
 
     private genLALR() {
@@ -107,11 +136,12 @@ export class LRStateMachine {
             });
         }
 
-        console.log("LALR(1) CORE: ")
         this.printLALR1Core();
 
         // gen lang table
         let actionTable: { at: number, action: Action, to: number, prodIdx: number }[][] = this.canonicalLRCollections.map(() => []);
+
+        this.canonicalLRCollections = this.canonicalLRCollections.map(a => this.closureLR1(a));
 
         this.canonicalLRCollections.forEach((i, iIndex) => {
             i.forEach((p, pIndex) => {
@@ -132,7 +162,7 @@ export class LRStateMachine {
                             if (existInfo.precedence >= nowInfo.precedence) {
                                 // reduce
                             }
-                            else if (existInfo.isLeftAssociative) {
+                            else if (!existInfo.isLeftAssociative) {
                                 // reduce
                             }
                             else {
@@ -192,33 +222,19 @@ export class LRStateMachine {
                 else if (p.production.leftHand === DT.Production.START_PRODUCTION && p.curState === 1) {
                     actionTable[iIndex].push({ at: DT.Production.EOF, action: Action.Accept, to: 0, prodIdx: pIndex });
                 }
+                else if (gotoTar !== undefined && p.currentInput! >= DT.Production.NON_TERMINAL_START) { // empty productions: reduce to p
+                    let emp = this.productions.find(a => a.leftHand === p.currentInput && a.rightHand.length === 0);
+                    if (emp !== undefined) {
+                    }
+                }
             });
         });
 
         this.printActionTable(actionTable);
-        return actionTable;
-    }
 
-    private printActionTable(actionTable: { at: number; action: Action; to: number; prodIdx: number; }[][]) {
-        console.log("\nACTION TABLE: ");
-        actionTable.forEach((a, i) => {
-            console.log("Group " + i);
-            // this.canonicalLRCollections[i].forEach(a => console.log("\t" + a.toString()));
-            // console.log("\t----------");
-            a.forEach(b => {
-                if (b.action === Action.Accept) {
-                    console.log(`\t${DT.transToName(b.at)} -> Accept`);
-                }
-                else if (b.action === Action.Error) {
-                }
-                else if (b.action === Action.Reduce) {
-                    console.log(`\t${DT.transToName(b.at)} -> Reduce by: ${this.canonicalLRCollections[i][b.prodIdx].toString()}`);
-                }
-                else if (b.action === Action.Shift) {
-                    console.log(`\t${DT.transToName(b.at)} -> Shift to group: ${b.to}`);
-                }
-            });
-        });
+        this.canonicalLRCollections = this.canonicalLRCollections.map(a => this.getKernel(a));
+
+        return actionTable;
     }
 
     private gotoLR1(i: DT.ProductionState[], x: number) {
@@ -361,7 +377,7 @@ export class LRStateMachine {
         while (true) {
             let newItems: typeof c = [];
             c.forEach((i, fromIndex) => {
-                let nextX = this.getNextX(i);
+                let nextX = [...new Set(this.getNextX(i))];
                 nextX.forEach(x => {
                     let goix = this.gotoLR0(i, x);
                     let toIndex: number;
@@ -395,7 +411,7 @@ export class LRStateMachine {
     }
 
     private getKernel(i: DT.ProductionState[]) {
-        return i.filter(a => a.curState !== 0 || a.production.leftHand === DT.Production.START_PRODUCTION);
+        return i.filter(a => a.curState !== 0 || a.production.leftHand === DT.Production.START_PRODUCTION || a.production.rightHand.length === 0);
     }
     private isSame(a: DT.ProductionState[], b: typeof a) {
         let ai = this.getKernel(a);
