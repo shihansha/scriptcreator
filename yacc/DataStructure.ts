@@ -1,7 +1,7 @@
 
 // in stack data
-type StackNodeType = Terminal | Nonterminal;
-type ReduceCallback = (stack: StackNodeType[]) => void;
+export type StackNodeType = Terminal | Nonterminal;
+type ReduceCallback = (stack: StackNodeType[]) => any;
 
 // debug purpose
 export let NENUM: any;
@@ -43,21 +43,21 @@ export function transToName(a: number) {
 
 export class Terminal {
     readonly index: number;
-    readonly yylval: any;
+    readonly val: any;
 
     constructor(index: number, yylval: any) {
         this.index = index;
-        this.yylval = yylval;
+        this.val = yylval;
     }
 
 }
 
 export class Nonterminal {
     readonly index: number;
-    readonly vals: any[];
-    constructor(index: number) {
+    readonly val: any;
+    constructor(index: number, vals: any) {
         this.index = index;
-        this.vals = [];
+        this.val = vals;
     }
 }
 
