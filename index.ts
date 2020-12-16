@@ -56,7 +56,7 @@ yaccDT.setDbg(Nonterminal, Terminal);
 let myProductions: yaccDT.Production[] = [
     new yaccDT.Production(Nonterminal.E, [Nonterminal.E, Terminal.PLUS, Nonterminal.E], s => s[s.length - 3].val + s[s.length - 1].val, { isLeftAssociative: true, precedence: 0 }),
     new yaccDT.Production(Nonterminal.E, [Nonterminal.E, Terminal.MUL, Nonterminal.E], s => s[s.length - 3].val * s[s.length - 1].val, { isLeftAssociative: true, precedence: 1 }),
-    new yaccDT.Production(Nonterminal.E, [Terminal.LC, Nonterminal.E, Terminal.RC], s => s[s.length - 1].val),
+    new yaccDT.Production(Nonterminal.E, [Terminal.LC, Nonterminal.E, Terminal.RC], s => s[s.length - 2].val),
     new yaccDT.Production(Nonterminal.E, [Terminal.NUM], s => s[s.length - 1].val),
 ];
 
@@ -66,5 +66,5 @@ const parser = new LRParser(yacc, lexOutput);
 ////////
 // USE
 
-lexer.setStringToParse("1+2*3+4");
+lexer.setStringToParse("1+2*(3+4)");
 console.log(parser.run());
