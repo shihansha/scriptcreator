@@ -1,7 +1,7 @@
 
 // in stack data
 export type StackNodeType = Terminal | Nonterminal;
-type ReduceCallback = (stack: StackNodeType[]) => any;
+type ReduceCallback = (stack: StackNodeType[], handler: { yyerror: (msg: string) => void, yyerrok: () => void }) => any;
 
 // debug purpose
 export let NENUM: any;
@@ -23,6 +23,9 @@ export function transToName(a: number) {
         else if (a === Production.DUMMY) {
             return "[DUMMY]";
         }
+        else if (a === Production.ERROR) {
+            return "[ERR]";
+        }
     }
     else if (a < Production.NON_TERMINAL_START) {
         return TENUM[a];
@@ -33,7 +36,6 @@ export function transToName(a: number) {
     else {
         switch (a) {
             case Production.START_PRODUCTION: return "[S]";
-            case Production.ERROR_PRODUCTION: return "[E]";
             default: return "[UNKNOWN]";
         }
             
@@ -69,7 +71,7 @@ export class Production {
      */
     static readonly NON_TERMINAL_START = 0x1000;
     static readonly START_PRODUCTION = 0x2000;
-    static readonly ERROR_PRODUCTION = 0x2001;
+    static readonly ERROR = -4;
     static readonly SHARP = -2;
     static readonly DUMMY = -3;
     static readonly EOF = -1;
@@ -84,22 +86,7 @@ export class Production {
 
     toString() {
         let left: string = NENUM[this.leftHand] ?? ["[S]"];
-        let right: string = this.rightHand.map(a => {
-            if (a < Production.NON_TERMINAL_START) {
-                return TENUM[a];
-            }
-            else if (a < Production.START_PRODUCTION) {
-                return NENUM[a];
-            }
-            else {
-                switch (a) {
-                    case Production.START_PRODUCTION: return "[S]";
-                    case Production.ERROR_PRODUCTION: return "[E]";
-                    default: return "[UNKNOWN]";
-                }
-                    
-            }
-        }).join(" ");
+        let right: string = this.rightHand.map(a => transToName(a)).join(" ");
         return left + " -> " + right;
     }
 }
@@ -122,36 +109,10 @@ export class ProductionState {
 
     toString() {
         let left: string = NENUM[this.production.leftHand] ?? ["[S]"];
-        let rights: string[] = this.production.rightHand.map(a => {
-            if (a < Production.NON_TERMINAL_START) {
-                return TENUM[a];
-            }
-            else if (a < Production.START_PRODUCTION) {
-                return NENUM[a];
-            }
-            else {
-                switch (a) {
-                    case Production.START_PRODUCTION: return "[S]";
-                    case Production.ERROR_PRODUCTION: return "[E]";
-                    default: return "[UNKNOWN]";
-                }
-                    
-            }
-        });
+        let rights: string[] = this.production.rightHand.map(a => transToName(a));
         rights[this.curState] = "* " + (rights[this.curState] ?? "");
         let right = rights.join(" ");
-        let look = this.lookFoward.map(a => {
-            if (a === Production.EOF) {
-                return "[EOF]";
-            }
-            else if (a === Production.SHARP) {
-                return "[#]";
-            }
-            else if (a === Production.DUMMY) {
-                return "[DUMMY]";
-            }
-            return TENUM[a];
-        }).join(",")
+        let look = this.lookFoward.map(a => transToName(a)).join(",")
         return left + " -> " + right + " (" + look + ")";
     }
 }

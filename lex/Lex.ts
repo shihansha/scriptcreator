@@ -3,7 +3,7 @@ import * as RegExp from "../regularExp/Parser";
 type Undefinable<T> = T extends undefined ? T : (T | undefined);
 
 type YYEnvInternal = { yylval: any, yytext: number, yyleng: number, program: string };
-export type YYEnv = { yylval: any, readonly yytext: number, readonly yyleng: number, readonly program: string, getCurrentVal: (this: YYEnv) => string };
+export type YYEnv = { yylval: any, readonly yytext: number, readonly yyleng: number, readonly program: string, lineCharacter: [number, number], lexUnit: string };
 export type LexMatchCallback = ((yy: YYEnv) => number);
 export type LexEntry = [string, Undefinable<LexMatchCallback>];
 
@@ -13,9 +13,8 @@ export class Lex {
         yytext: 0,
         yyleng: 0,
         program: "",
-        getCurrentVal: function (this: YYEnv) {
-            return this.program.substring(this.yytext, this.yyleng + this.yytext);
-        }
+        lexUnit: "",
+        lineCharacter: [1, 1],
     };
 
     private readonly callbacks: Undefinable<LexMatchCallback>[];
@@ -45,6 +44,9 @@ export class Lex {
     }
 
     public getNextToken() {
+        this.yy.lineCharacter[0] = this.line;
+        this.yy.lineCharacter[1] = this.character;
+
         let continueFlag = true;
         while (this.currentIndex < this.strLength && continueFlag) {
             continueFlag = false;
@@ -54,6 +56,7 @@ export class Lex {
             }
             else {
                 let consumed = this.str.substring(this.currentIndex, this.currentIndex + res.consumedLetterNum).replace("\r", "").split("\n");
+
                 if (consumed.length > 1) {
                     this.line += consumed.length - 1;
                     this.character = consumed[consumed.length - 1].length + 1;
@@ -65,6 +68,7 @@ export class Lex {
 
             (this.yy as YYEnvInternal).yytext = this.currentIndex;
             (this.yy as YYEnvInternal).yyleng = res.consumedLetterNum;
+            this.yy.lexUnit = this.str.substring(this.currentIndex, this.currentIndex + res.consumedLetterNum);
             this.yy.yylval = null;
 
             this.currentIndex += res.consumedLetterNum;
@@ -79,9 +83,5 @@ export class Lex {
         }
 
         return -1;
-    }
-
-    public getLineInfo(): [number, number] {
-        return [this.line, this.character];
     }
 }

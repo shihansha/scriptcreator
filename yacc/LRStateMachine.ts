@@ -1,6 +1,6 @@
 import * as DT from "./DataStructure";
 
-const DEBUG = 0;
+const DEBUG = false;
 
 export enum Action {
     Error = 0,
